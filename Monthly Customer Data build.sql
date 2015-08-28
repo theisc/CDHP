@@ -8,20 +8,27 @@ MiniHPDM..Dim_Date
 MiniHPDM..lkp_mbr_indv	
 
 The following were extracted from Galaxy using queries as written in Galaxy_Pull.sql
-Galaxy_Research.dbo.Member_Coverage_Month_2050331
-select count(*) from Galaxy_Research.dbo.Customer_Segment_Coverage_20150811	--2260346
+Galaxy_Research.dbo.Member_Coverage_Month_2050811
+Galaxy_Research.dbo.Customer_Segment_Coverage_20150811	
+Galaxy_Research.dbo.Customer_Segment_Plan_Benefit_20150820
+
+MiniHPDM..Fact_Demographics
+MiniHPDM..Dim_Date
 
 Created By: Curt
 Created On: 8/6/13 
 
 Updated By: Curt
-Updated On: 8/1/15
+Updated On: 8/28/15
 
-select count(*) from Galaxy_Research.dbo.Member_Coverage_Month_20150331			--114782228
-select count(*) from Galaxy_Research.dbo.Customer_Segment_Coverage_20150811	--1760364
+select count(*) from Galaxy_Research.dbo.Member_Coverage_Month_20150811			--114782228
+select count(*) from Galaxy_Research.dbo.Customer_Segment_Coverage_20150811		--1760364
+select count(*) from Galaxy_Research.dbo.Customer_Segment_Plan_Benefit_20150820	--3397858
 
 Output Tables:
-
+udb_ctheis..SavvyPlanID_All
+udb_ctheis..SavvyPlanID_to_BenSysID_by_Month
+udb_ctheis..Dim_CustSegDemographics_Detail
 
 */
 
@@ -163,7 +170,7 @@ from (
 		csc.PLN_BEN_SET_MDL_SYS_ID,
 		rn	=	row_number() over (partition by sp.SavvyPlanID, d.Begin_DT order by csc.updt_dt desc)  
 	from Galaxy_Research..Customer_Segment_Plan_Benefit_20150820	csc	
-	join #tmpDates													d	on	d.Begin_DT			between csc.CUST_SEG_PLN_BEN_EFF_DT  and csc.CUST_SEG_PLN_BEN_END_DT
+	join udb_ctheis..cat_AnalysisDates								d	on	d.Begin_DT			between csc.CUST_SEG_PLN_BEN_EFF_DT  and csc.CUST_SEG_PLN_BEN_END_DT
 	join udb_ctheis..SavvyPlanID_All								sp	on	sp.cust_seg_sys_id		=	csc.cust_seg_sys_id
 																		and	sp.PRDCT_CD				=	csc.prdct_cd
 																		and	sp.pln_var_subdiv_cd	=	csc.pln_var_subdiv_cd
@@ -188,82 +195,3 @@ where rn	=	1  --overlapping dates occur in plan benefit, need to select date wit
 
 create unique clustered index ix_plan_ben_set on udb_ctheis..SavvyPlanID_to_BenSysID_by_Month	(SavvyPlanID, Begin_DT)
 --8049451 records on 8/20/15
-
-select 
-	a.MBR_SYS_ID, 
-	d.YEAR_NBR
-into #MemberFullYear
-from Galaxy_Research.dbo.Member_Coverage_Month_20150811	a
-join #tmpDates											d	on	d.Begin_DT			between	a.MBR_COV_MO_ROW_EFF_DT and a.MBR_COV_MO_ROW_END_DT	--get a separate record for each month of coverage		
-group by a.MBR_SYS_ID, 
-	d.YEAR_NBR
-having count(distinct d.Begin_DT)	=	12
-
-create unique clustered index ucix on #MemberFullYear (Mbr_Sys_ID,Year_Nbr)
-
-select	MBR_SYS_ID, 2011 as BeginYear
-into udb_ctheis..cat_2YearMember
-from #MemberFullYear
-where YEAR_NBR	between 2011 and 2012
-group by MBR_SYS_ID
-having count(*)	=	2
-union
-select	MBR_SYS_ID, 2012
-from #MemberFullYear
-where YEAR_NBR	between 2012 and 2013
-group by MBR_SYS_ID
-having count(*)	=	2
-union
-select	MBR_SYS_ID, 2013
-from #MemberFullYear
-where YEAR_NBR	between 2013 and 2014
-group by MBR_SYS_ID
-having count(*)	=	2
-
-create unique clustered index ucix on udb_ctheis..cat_2YearMember (Mbr_Sys_ID, BeginYear)
---45223583 on 20150824
-
---run once: get list of fully enrolled members over 
-if exists (select name from udb_ctheis.sys.objects where name = 'Member_By_Month')
-drop table udb_ctheis..Member_By_Month
-
-
-select 
-	MBR_SYS_ID, 
-	Begin_DT, 
-	SavvyPlanID
-into udb_ctheis..Member_By_Month
-from (
-select 
-		a.MBR_SYS_ID, 
-		d.Begin_DT, 
-		sp.SavvyPlanID,
-		rn	=	row_number() over (partition by a.MBR_SYS_ID, d.Begin_DT order by a.updt_dt desc) 
-	from Galaxy_Research.dbo.Member_Coverage_Month_20150811	a
-	join #tmpDates											d	on	d.Begin_DT			between	a.MBR_COV_MO_ROW_EFF_DT and a.MBR_COV_MO_ROW_END_DT	--get a separate record for each month of coverage
-	join #MemberFull2Year									f2y	on	a.MBR_SYS_ID			=	f2y.MBR_SYS_ID
-	join #MemberFullYear									fy	on	a.MBR_SYS_ID			=	fy.MBR_SYS_ID
-																and	d.YEAR_NBR				=	fy.YEAR_NBR		
-	join udb_ctheis..SavvyPlanID_All						sp	on	sp.cust_seg_sys_id		=	a.cust_seg_sys_id
-																and	sp.PRDCT_CD				=	a.MED_PRDCT_1_CD
-																and	sp.pln_var_subdiv_cd	=	a.pln_var_subdiv_cd
-																and	sp.rpt_cd_br_cd			=	a.rpt_cd_br_cd
-	)	a
-where rn = 1  --only 180 out 720M have more than 1 record in 1 month
-
---12227141  on 8/10/15
-
-create unique clustered index ucix_mbr_mnth on udb_ctheis..Member_By_Month (Mbr_Sys_ID, Begin_DT)
-
-
-
-join MiniHPDM..lkp_mbr_indv								lmi	on	a.MBR_SYS_ID	=	lmi.Mbr_Sys_Id
-
-
-
-select MBR_SYS_ID, 
-		Begin_DT
-from udb_ctheis..Member_By_Month
-group by MBR_SYS_ID, 
-		Begin_DT
-having count(*) > 1
