@@ -1,17 +1,18 @@
---drop table udb_ctheis..RA_2013_Demo
+drop table udb_ctheis..RA_2013_Demo;
 
 select distinct
-	UniqueMemberID	=	INDV_SYS_ID, 
+	UniqueMemberID	=	pby.INDV_SYS_ID, 
 	GenderCd		=	Gdr_Cd, 
 	BirthDate		=	cast(2015-Age as char(4))+'0701',
 	AgeLast			=	Age
 into udb_ctheis..RA_2013_Demo
-from ##PlanBenefitYear
+from ##PlanBenefitYear		pby
+join miniHPDM..dim_Member	m	on	pby.Indv_Sys_Id	=	m.Indv_Sys_Id
 where PlanYear	= 2013
 
 create unique clustered index ucix_Ind on udb_ctheis..RA_2013_Demo (UniqueMemberID);
 
---drop table udb_ctheis..RA_2013_Diag;
+drop table udb_ctheis..RA_2013_Diag;
 
 with a as (
 	select fc.Indv_Sys_Id, d.FULL_DT, 

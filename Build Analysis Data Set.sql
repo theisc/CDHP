@@ -25,13 +25,13 @@ join udb_ctheis..Liability_Set_by_Month				lsm	on	lsm.PLN_BEN_SET_MDL_SYS_ID	=	p
 join udb_ctheis..Service_Event_Benefit_Set_by_Month	sem	on	sem.PLN_BEN_SET_MDL_SYS_ID	=	pm.PLN_BEN_SET_MDL_SYS_ID
 														and	sem.Begin_DT				=	pm.Begin_DT
 where (sem.Office_CostShareType	in (1,3) or sem.Urgent_CostShareType  in (1,3))  --has urgent care or office cost with per visit or coinsurance costs
-	and IndividualDeductibleType	=	1	-- limit to plans that have annual deductibles and OOPs
-	and IndividualOOPType			=	1
-	and FamilyDeductibleType		=	1
-	and FamilyOOPType				=	1
+	and IndividualDeductibleType	<>	2	-- exclued plans that have policy year deductibles and OOPs
+	and IndividualOOPType			<>	2
+	and FamilyDeductibleType		<>	2
+	and FamilyOOPType				<>	2
 
 create unique clustered index ix_plan_ben_set on udb_ctheis..cat_Plan_Benefits (PLN_BEN_SET_MDL_SYS_ID, Begin_DT)
---11839763 on 8/19/15
+--14974665 on 9/1/15
 
 --create a table that has three 24 month periods 2011-2, 2012-3, 2013-4
 select YEAR_NBR as Begin_Yr, Begin_DT
@@ -84,6 +84,8 @@ where PlanCount	=	BenePlanCount  --check to see if we have plan information for 
 group by Cust_Seg_Sys_ID, Begin_Yr
 
 create unique clustered index ucix_CustPlan2Yr	on udb_ctheis..cat_Customer_by_Analysis_Period	(Cust_Seg_Sys_Id, Begin_Yr)
+--453078 on 9/1/15
+
 
 --get set of plan details for customers that met criteria
 if exists (select name from udb_ctheis.sys.objects where name = 'cat_Plans_in_Analysis')
@@ -101,7 +103,7 @@ where cap.PlanMonths	=	24
 		or (BothYearHDHP = 12 and Year2HDHP	=	12))
 
 create unique clustered index ucix_PlanMonth on udb_ctheis..cat_Plans_in_Analysis (SavvyPlanID, Begin_DT, PLN_BEN_SET_MDL_SYS_ID)
---725469 on 8/27/15
+--929197 on 9/2/15
 
 
 --get list of members by month who are associated with employers that meet above criteria
@@ -123,7 +125,7 @@ join udb_ctheis..cat_Plans_in_Analysis					pa	on	sp.SavvyPlanID			=	pa.SavvyPlan
 															and	d.Begin_DT				=	pa.Begin_DT
 
 create unique clustered index ucix on udb_ctheis..Member_By_Month (Mbr_Sys_ID, Begin_Dt)
---19729666 on 8/27/15
+--26407921 on 8/27/15
 
 drop table #member2year
 
@@ -139,7 +141,7 @@ having count(*)	=	24
 	and count(distinct sp.Cust_Seg_Sys_Id)	=	1
 
 create unique clustered index ucix_IndYr on #member2year (Indv_Sys_Id, Begin_YR)
---640362 on 8/27/15
+--888353 on 9/2/15
 
 
 
@@ -156,7 +158,7 @@ join #member2year					m2y	on	y2.begin_yr		=	m2y.Begin_Yr
 										and	lmi.Indv_Sys_Id	=	m2y.Indv_Sys_Id
 
 create unique clustered index ucix_IndMonth on udb_ctheis..cat_Ind_By_Month (Indv_Sys_Id, Begin_DT, Begin_YR)
---15368688 8/27/15
+--21320472 9/2/15
 
 drop table #PlanBenefitYear
 
@@ -234,6 +236,8 @@ drop table #dependent
 
 select pby.INDV_SYS_ID,	pby.PlanYear,
 	Annual_Allow_Amount		=	isnull(fc.Annual_Allow_Amount,0),
+	Annual_Net_Paid_Amount	=	isnull(Annual_Net_Paid_Amount,0),
+	Annual_OOP_Amount		=	isnull(Annual_OOP_Amount,0),
 	Annual_IP_Allow_Amount	=	isnull(Annual_IP_Allow_Amount,0),
 	Annual_OP_Allow_Amount	=	isnull(Annual_OP_Allow_Amount,0),
 	Annual_Dr_Allow_Amount	=	isnull(Annual_Dr_Allow_Amount,0),
@@ -248,6 +252,8 @@ left join (
 		fc.Indv_Sys_Id,
 		d.Year_Nbr,
 		Annual_Allow_Amount		=	sum(fc.allw_amt),
+		Annual_Net_Paid_Amount	=	sum(fc.net_pd_amt),
+		Annual_OOP_Amount		=	sum(fc.OOP_Amt),
 		Annual_IP_Allow_Amount	=	sum(case when fc.Srvc_Typ_Sys_Id = 1 then fc.Allw_Amt end),
 		Annual_OP_Allow_Amount	=	sum(case when fc.Srvc_Typ_Sys_Id = 2 then fc.Allw_Amt end),
 		Annual_Dr_Allow_Amount	=	sum(case when fc.Srvc_Typ_Sys_Id = 3 then fc.Allw_Amt end),
@@ -261,14 +267,23 @@ left join (
 							and	pby.PlanYear	=	fc.year_nbr
 
 create unique clustered index ucix_IndYear on #dependent (Indv_Sys_ID, PlanYear)
+--1489867 on 9/2/15
 
 --run Get RAF score scripts at this point
+drop table #RAF
 
 select 
 	Indv_Sys_ID	=	UniqueMemberID,
 	RAF			=	TotalScore,
-	PlanYear	=	2012
+	PlanYear	=	2011
 into #RAF
+from udb_ctheis..RA_Com_P_MetalScores_2011
+where ModelVersion	=	'Silver'
+union
+select 
+	Indv_Sys_ID	=	UniqueMemberID,
+	RAF			=	TotalScore,
+	PlanYear	=	2012
 from udb_ctheis..RA_Com_P_MetalScores_2012
 where ModelVersion	=	'Silver'
 union
@@ -285,7 +300,7 @@ select
 	PlanYear	=	2014
 from udb_ctheis..RA_Com_P_MetalScores_2014
 where ModelVersion	=	'Silver'
-
+--1489663 on 9/2/15
 
 drop table udb_ctheis..cat_Final_Analysis_Set
 
@@ -293,6 +308,8 @@ select pby.*,
 	m.Age,
 	m.Gdr_Cd,
 	d.Annual_Allow_Amount,
+	Annual_Net_Paid_Amount,
+	Annual_OOP_Amount,
 	Annual_IP_Allow_Amount,
 	Annual_OP_Allow_Amount,
 	Annual_Dr_Allow_Amount,
@@ -305,17 +322,32 @@ join #RAF					r	on	pby.Indv_Sys_ID	=	r.Indv_Sys_ID
 								and pby.PlanYear	=	r.PlanYear
 join miniHPDM..dim_Member	m	on	pby.Indv_Sys_Id	=	m.Indv_Sys_Id
 where m.Gdr_CD in ('M','F')
-	and Begin_Yr in (2012,2013)
+	--and Begin_Yr in (2012,2013)
 
 create unique clustered index ucix_IndYear on udb_ctheis..cat_Final_Analysis_Set (Indv_Sys_ID, Begin_Yr, PlanYear)
+--1776341 on 9/2/15
+
 
 --summary statistics
 
-select count(*) --1280450
-from udb_ctheis..cat_Final_Analysis_Set
 
+--how many employers meet criteria set 2 by analysis period?
 select Begin_Yr, 
-	PlansTypesOffered,
+	count(*)
+from udb_ctheis..cat_Customer_by_Analysis_Period
+group by Begin_Yr
+order by Begin_Yr
+
+--how many employers meet criteria set 3 by analysis period?
+select Begin_Yr, 
+	count(*)
+from udb_ctheis..cat_Customer_by_Analysis_Period
+where PlanMonths	= 24
+group by Begin_Yr
+order by Begin_Yr
+
+--how many employers are in each offer type bucket?
+select Begin_Yr, 
 	EmpOfferType	=	case
 						when BothYearHDHP = 0 then	'AllLow'
 						when BothYearHDHP = 24 then	'AllHigh'
@@ -325,17 +357,17 @@ select Begin_Yr,
 	count(*)
 from udb_ctheis..cat_Customer_by_Analysis_Period
 where PlanMonths	= 24
-group by Begin_Yr,
-	PlansTypesOffered,case
+group by Begin_Yr,case
 						when BothYearHDHP = 0 then	'AllLow'
 						when BothYearHDHP = 24 then	'AllHigh'
 						when BothYearHDHP = 12 and Year2HDHP	=	12 then	'Yr2High'
 						else 'OffYrMix'
 						end
-order by Begin_Yr, PlansTypesOffered, EmpOfferType
+order by EmpOfferType, Begin_Yr
 
+--how many employers and inviduals are left after criteria 4 by Plan Offer Type?
 select Begin_Yr, EmployerPlanType, 
-	PlansTypesOffered,  count(*), count(distinct cust_seg_sys_id)
+	PlansTypesOffered,  count(distinct Indv_Sys_Id), count(distinct cust_seg_sys_id)
 from udb_ctheis..cat_Final_Analysis_Set
 where PreYearFlag	=	1
 group by Begin_Yr, EmployerPlanType,
@@ -345,3 +377,23 @@ order by
 	EmployerPlanType,
 	Begin_Yr
 
+--to get a true acturial richness, you probably need history for at least 100 individuals
+--if we limited to plans where a true actuarial richness, we would lose almost half of the treatment group
+select *
+from (
+	--get a actuarial value by plan based on utilization
+	select 
+		PlanRichness	=	sum(Annual_Net_Paid_Amount)/sum(case when Annual_Allow_Amount = 0 then 1. else Annual_Allow_Amount end),
+		Individuals		=	count(*), 
+		PLN_BEN_SET_MDL_SYS_ID, Begin_Yr, PlanYear
+	from udb_ctheis..cat_Final_Analysis_Set
+	where Begin_Yr	> 2011
+	group by PLN_BEN_SET_MDL_SYS_ID, Begin_Yr, PlanYear
+	)	a
+join udb_ctheis..cat_Final_Analysis_Set	b	on	a.PLN_BEN_SET_MDL_SYS_ID	=	b.PLN_BEN_SET_MDL_SYS_ID
+											and	a.Begin_Yr					=	b.Begin_Yr
+											and a.PlanYear					=	b.PlanYear
+where b.PlansTypesOffered	= 'HDHP'
+	and PreYearFlag = 0
+	and Individuals	> 100
+	and 

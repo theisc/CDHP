@@ -1,18 +1,18 @@
-drop table udb_ctheis..RA_2012_Demo
+drop table udb_ctheis..RA_2011_Demo;
 
 select distinct
 	UniqueMemberID	=	pby.INDV_SYS_ID, 
 	GenderCd		=	Gdr_Cd, 
 	BirthDate		=	cast(2015-Age as char(4))+'0701',
 	AgeLast			=	Age
-into udb_ctheis..RA_2012_Demo
+into udb_ctheis..RA_2011_Demo
 from ##PlanBenefitYear		pby
 join miniHPDM..dim_Member	m	on	pby.Indv_Sys_Id	=	m.Indv_Sys_Id
-where PlanYear	= 2012
+where PlanYear	= 2011
 
-create unique clustered index ucix_Ind on udb_ctheis..RA_2012_Demo (UniqueMemberID);
+create unique clustered index ucix_Ind on udb_ctheis..RA_2011_Demo (UniqueMemberID);
 
-drop table udb_ctheis..RA_2012_Diag;
+drop table udb_ctheis..RA_2011_Diag;
 
 with a as (
 	select fc.Indv_Sys_Id, d.FULL_DT, 
@@ -24,12 +24,12 @@ with a as (
 	join MiniHPDM..Dim_Diagnosis_Code	dc1	on	fc.Diag_1_Cd_Sys_Id	=	dc1.DIAG_CD_SYS_ID
 	join MiniHPDM..Dim_Diagnosis_Code	dc2	on	fc.Diag_2_Cd_Sys_Id	=	dc2.DIAG_CD_SYS_ID
 	join MiniHPDM..Dim_Diagnosis_Code	dc3	on	fc.Diag_3_Cd_Sys_Id	=	dc3.DIAG_CD_SYS_ID
-	join udb_ctheis..RA_2012_Demo		i	on	fc.Indv_Sys_Id		=	i.UniqueMemberID
-	where d.YEAR_NBR	=	2012
+	join udb_ctheis..RA_2011_Demo		i	on	fc.Indv_Sys_Id		=	i.UniqueMemberID
+	where d.YEAR_NBR	=	2011
 	)
 select UniqueMemberID, ICDCd, 
 	DiagnosisServiceDate	=	min(Full_DT)
-into udb_ctheis..RA_2012_Diag
+into udb_ctheis..RA_2011_Diag
 from (
 	select 
 		UniqueMemberID	=	Indv_Sys_Id, 
@@ -45,4 +45,5 @@ from (
 	)	a
 group by UniqueMemberID, ICDCd
 
-exec RA_Commercial_2014..spRAFDiagInput 'udb_ctheis..RA_2012_Demo','udb_ctheis..RA_2012_Diag','udb_ctheis','2012'
+
+exec RA_Commercial_2014..spRAFDiagInput 'udb_ctheis..RA_2011_Demo','udb_ctheis..RA_2011_Diag','udb_ctheis','2011'
