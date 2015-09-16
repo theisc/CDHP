@@ -56,7 +56,7 @@ drop table udb_ctheis..cat_Customer_by_Analysis_Period
 select 
 	Cust_Seg_Sys_ID, 
 	Begin_Yr,
-	PlansTypesOffered	=	max(case 
+	PlanTypesOffered	=	max(case 
 								when Begin_Dt	<>	cast(cast(Begin_Yr+1 as char(4))+'0101' as date)	then null	--check first month of year 2 of analysis period
 								when HDHP_Flag	=	1	and PlanTypeCount	=	2	then 'Both'						
 								when HDHP_Flag	=	1	and PlanTypeCount	=	1	then 'HDHP'
@@ -171,7 +171,7 @@ select
 								else											0
 								end,
 	sp.Cust_Seg_Sys_ID,
-	cap.PlansTypesOffered, 
+	cap.PlanTypesOffered, 
 	EmployerPlanType		=	case
 								when BothYearHDHP = 0 then	'AllLow'
 								when BothYearHDHP = 24 then	'AllHigh'
@@ -322,11 +322,46 @@ join #RAF					r	on	pby.Indv_Sys_ID	=	r.Indv_Sys_ID
 								and pby.PlanYear	=	r.PlanYear
 join miniHPDM..dim_Member	m	on	pby.Indv_Sys_Id	=	m.Indv_Sys_Id
 where m.Gdr_CD in ('M','F')
+	and m.Age < 65
 	--and Begin_Yr in (2012,2013)
 
 create unique clustered index ucix_IndYear on udb_ctheis..cat_Final_Analysis_Set (Indv_Sys_ID, Begin_Yr, PlanYear)
 --1776341 on 9/2/15
 
+
+--remove individuals that had a negative amount in either year
+delete udb_ctheis..cat_Final_Analysis_Set
+from udb_ctheis..cat_Final_Analysis_Set	fas
+join (
+	select distinct Indv_Sys_ID, Begin_Yr
+	from udb_ctheis..cat_Final_Analysis_Set
+	where Annual_Allow_Amount		< 0
+		or  Annual_IP_Allow_Amount	< 0
+		or  Annual_OP_Allow_Amount	< 0
+		or  Annual_Dr_Allow_Amount	< 0
+		or  Annual_Rx_Allow_Amount	< 0
+	)									lb	on	fas.INDV_SYS_ID	=	lb.INDV_SYS_ID
+											and	fas.Begin_Yr	=	lb.Begin_Yr
+
+--remove individuals that had over 250K allowed amount in either year
+delete udb_ctheis..cat_Final_Analysis_Set
+from udb_ctheis..cat_Final_Analysis_Set	fas
+join (
+	select distinct Indv_Sys_ID, Begin_Yr
+	from udb_ctheis..cat_Final_Analysis_Set
+	where Annual_Allow_Amount		> 250000
+	)									lb	on	fas.INDV_SYS_ID	=	lb.INDV_SYS_ID
+											and	fas.Begin_Yr	=	lb.Begin_Yr
+
+
+delete udb_ctheis..cat_Final_Analysis_Set
+from udb_ctheis..cat_Final_Analysis_Set	fas
+join (
+	select distinct Indv_Sys_ID, Begin_Yr
+	from udb_ctheis..cat_Final_Analysis_Set
+	where Annual_Allow_Amount		> 250000
+	)									lb	on	fas.INDV_SYS_ID	=	lb.INDV_SYS_ID
+											and	fas.Begin_Yr	=	lb.Begin_Yr
 
 --summary statistics
 
@@ -365,15 +400,23 @@ group by Begin_Yr,case
 						end
 order by EmpOfferType, Begin_Yr
 
+--how many employers and inviduals are left after criteria 4 by Begin Yr?
+select Begin_Yr,   count(distinct Indv_Sys_Id), count(distinct cust_seg_sys_id)
+from udb_ctheis..cat_Final_Analysis_Set
+where PreYearFlag	=	1
+group by Begin_Yr
+order by Begin_Yr
+
+
 --how many employers and inviduals are left after criteria 4 by Plan Offer Type?
 select Begin_Yr, EmployerPlanType, 
-	PlansTypesOffered,  count(distinct Indv_Sys_Id), count(distinct cust_seg_sys_id)
+	PlanTypesOffered,  count(distinct Indv_Sys_Id), count(distinct cust_seg_sys_id)
 from udb_ctheis..cat_Final_Analysis_Set
 where PreYearFlag	=	1
 group by Begin_Yr, EmployerPlanType,
-	PlansTypesOffered
+	PlanTypesOffered
 order by 
-	PlansTypesOffered,
+	PlanTypesOffered,
 	EmployerPlanType,
 	Begin_Yr
 
@@ -393,7 +436,6 @@ from (
 join udb_ctheis..cat_Final_Analysis_Set	b	on	a.PLN_BEN_SET_MDL_SYS_ID	=	b.PLN_BEN_SET_MDL_SYS_ID
 											and	a.Begin_Yr					=	b.Begin_Yr
 											and a.PlanYear					=	b.PlanYear
-where b.PlansTypesOffered	= 'HDHP'
+where b.PlanTypesOffered	= 'HDHP'
 	and PreYearFlag = 0
 	and Individuals	> 100
-	and 
