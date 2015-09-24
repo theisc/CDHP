@@ -160,7 +160,7 @@ join #member2year					m2y	on	y2.begin_yr		=	m2y.Begin_Yr
 create unique clustered index ucix_IndMonth on udb_ctheis..cat_Ind_By_Month (Indv_Sys_Id, Begin_DT, Begin_YR)
 --21320472 9/2/15
 
-drop table #PlanBenefitYear
+drop table ##PlanBenefitYear
 
 select
 	im.INDV_SYS_ID,
@@ -168,6 +168,10 @@ select
 	PlanYear				=	year(im.begin_dt),
 	PreYearFlag				=	case
 								when year(im.begin_dt)	=	im.Begin_yr	then	1
+								else											0
+								end,
+	PostYearFlag				=	case
+								when year(im.begin_dt)	>	im.Begin_yr	then	1
 								else											0
 								end,
 	sp.Cust_Seg_Sys_ID,
@@ -206,7 +210,7 @@ group by
 								else											0
 								end,
 	sp.Cust_Seg_Sys_ID,
-	cap.PlansTypesOffered, 
+	cap.PlanTypesOffered, 
 	case
 								when BothYearHDHP = 0 then	'AllLow'
 								when BothYearHDHP = 24 then	'AllHigh'
@@ -304,9 +308,12 @@ where ModelVersion	=	'Silver'
 
 drop table udb_ctheis..cat_Final_Analysis_Set
 
-select pby.*, 
+select 
+	PlanYear2OfferAndChoice	=	pby.PlanTypesOffered+'-'+case when HDHP_Flag	=	1	then 'HDHP' else 'LDHP' end,
+	pby.*, 
 	m.Age,
 	m.Gdr_Cd,
+	r.RAF,
 	d.Annual_Allow_Amount,
 	Annual_Net_Paid_Amount,
 	Annual_OOP_Amount,
@@ -328,6 +335,25 @@ where m.Gdr_CD in ('M','F')
 create unique clustered index ucix_IndYear on udb_ctheis..cat_Final_Analysis_Set (Indv_Sys_ID, Begin_Yr, PlanYear)
 --1776341 on 9/2/15
 
+use udb_ctheis
+
+--create a flag HDHP across both years
+alter table cat_Final_Analysis_Set
+add Year2HDHP_Flag tinyint
+
+update cat_Final_Analysis_Set
+set Year2HDHP_Flag =	0
+
+update cat_Final_Analysis_Set
+set Year2HDHP_Flag =	1
+from (
+	select Indv_Sys_Id, PlanYear, Begin_Yr
+	from cat_Final_Analysis_Set
+	where HDHP_Flag	=	1
+	)	a
+where cat_Final_Analysis_Set.Indv_Sys_Id	=	a.Indv_Sys_ID
+	and cat_Final_Analysis_Set.PlanYear		between	a.Begin_Yr and a.PlanYear
+	and cat_Final_Analysis_Set.Begin_Yr		=	a.Begin_Yr
 
 --remove individuals that had a negative amount in either year
 delete udb_ctheis..cat_Final_Analysis_Set
@@ -353,15 +379,6 @@ join (
 	)									lb	on	fas.INDV_SYS_ID	=	lb.INDV_SYS_ID
 											and	fas.Begin_Yr	=	lb.Begin_Yr
 
-
-delete udb_ctheis..cat_Final_Analysis_Set
-from udb_ctheis..cat_Final_Analysis_Set	fas
-join (
-	select distinct Indv_Sys_ID, Begin_Yr
-	from udb_ctheis..cat_Final_Analysis_Set
-	where Annual_Allow_Amount		> 250000
-	)									lb	on	fas.INDV_SYS_ID	=	lb.INDV_SYS_ID
-											and	fas.Begin_Yr	=	lb.Begin_Yr
 
 --summary statistics
 
