@@ -306,10 +306,20 @@ from udb_ctheis..RA_Com_P_MetalScores_2014
 where ModelVersion	=	'Silver'
 --1489663 on 9/2/15
 
+--create a table to indicate who has HDHP in 2nd year
+select Indv_Sys_ID, Begin_Yr, HDHP_Flag
+into #HDHP
+from ##PlanBenefitYear
+where HDHP_Flag = 1
+
+create unique clustered index ucix_Ind_Yr on #HDHP (Indv_Sys_Id, Begin_Yr)
+
 drop table udb_ctheis..cat_Final_Analysis_Set
 
 select 
-	PlanYear2OfferAndChoice	=	pby.PlanTypesOffered+'-'+case when HDHP_Flag	=	1	then 'HDHP' else 'LDHP' end,
+	HDHP_Yr2_Flag =	isnull(h.HDHP_Flag, 0), --indicates if plan in year 2 is high deductible
+	NoChoice_Flag = case when pby.PlanTypesOffered <> 'Both' then 1 else 0 end,
+	PlanYear2OfferAndChoice	=	case when pby.PlanTypesOffered = 'Both' then 'Choice' else 'No Choice' end+'-'+case when h.HDHP_Flag	=	1	then 'CD' else 'LD' end,
 	pby.*, 
 	m.Age,
 	m.Gdr_Cd,
@@ -328,32 +338,14 @@ join #dependent				d	on	pby.Indv_Sys_ID	=	d.Indv_Sys_ID
 join #RAF					r	on	pby.Indv_Sys_ID	=	r.Indv_Sys_ID
 								and pby.PlanYear	=	r.PlanYear
 join miniHPDM..dim_Member	m	on	pby.Indv_Sys_Id	=	m.Indv_Sys_Id
+left join #HDHP				h	on	pby.Indv_Sys_Id	=	h.Indv_Sys_Id
+								and pby.Begin_Yr	=	h.Begin_Yr
 where m.Gdr_CD in ('M','F')
 	and m.Age < 65
-	--and Begin_Yr in (2012,2013)
+	and pby.Begin_Yr in (2012,2013)
 
 create unique clustered index ucix_IndYear on udb_ctheis..cat_Final_Analysis_Set (Indv_Sys_ID, Begin_Yr, PlanYear)
---1776341 on 9/2/15
-
-use udb_ctheis
-
---create a flag HDHP across both years
-alter table cat_Final_Analysis_Set
-add Year2HDHP_Flag tinyint
-
-update cat_Final_Analysis_Set
-set Year2HDHP_Flag =	0
-
-update cat_Final_Analysis_Set
-set Year2HDHP_Flag =	1
-from (
-	select Indv_Sys_Id, PlanYear, Begin_Yr
-	from cat_Final_Analysis_Set
-	where HDHP_Flag	=	1
-	)	a
-where cat_Final_Analysis_Set.Indv_Sys_Id	=	a.Indv_Sys_ID
-	and cat_Final_Analysis_Set.PlanYear		between	a.Begin_Yr and a.PlanYear
-	and cat_Final_Analysis_Set.Begin_Yr		=	a.Begin_Yr
+--1463639 on 4/16/16
 
 --remove individuals that had a negative amount in either year
 delete udb_ctheis..cat_Final_Analysis_Set
@@ -368,6 +360,7 @@ join (
 		or  Annual_Rx_Allow_Amount	< 0
 	)									lb	on	fas.INDV_SYS_ID	=	lb.INDV_SYS_ID
 											and	fas.Begin_Yr	=	lb.Begin_Yr
+--158
 
 --remove individuals that had over 250K allowed amount in either year
 delete udb_ctheis..cat_Final_Analysis_Set
@@ -378,6 +371,7 @@ join (
 	where Annual_Allow_Amount		> 250000
 	)									lb	on	fas.INDV_SYS_ID	=	lb.INDV_SYS_ID
 											and	fas.Begin_Yr	=	lb.Begin_Yr
+--1488 eliminated  
 
 
 --summary statistics
